@@ -1,0 +1,13 @@
+---
+title: "Crypto Markets"
+author: "Solenia Suarez"
+format: html
+execute:
+  echo: false
+---
+
+```{r}
+#| message: false
+library(tidyverse)
+library(arrow)
+```
