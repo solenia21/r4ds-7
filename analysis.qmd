@@ -11,3 +11,101 @@ execute:
 library(tidyverse)
 library(arrow)
 ```
+
+```{r}
+open_dataset("data/daily_prices.parquet") |> schema()
+```
+
+```{r}
+open_dataset("data/daily_prices.parquet") |>
+  filter(date_raw >= "2025-01-01") |>
+  group_by(coin_id) |>
+  summarise(avg_market_cap_usd = mean(market_cap_usd, na.rm = TRUE)) |>
+  arrange(desc(avg_market_cap_usd)) |>
+  collect()
+```
+
+```{r}
+#| cache: true
+prices <- read_parquet("data/daily_prices.parquet")
+metadata <- read_parquet("data/coin_metadata.parquet")
+categories <- read_parquet("data/categories.parquet")
+
+crypto <- prices |>
+  mutate(date = as.Date(date_raw)) |>
+  left_join(metadata, by = "coin_id") |>
+  left_join(
+    categories |> select(category_id, category_name, era_introduced),
+    by = "category_id"
+  )
+```
+
+```{r}
+crypto |>
+  group_by(date, category_name) |>
+  summarise(category_market_cap = sum(market_cap_usd, na.rm = TRUE), .groups = "drop") |>
+  mutate(category_name = forcats::fct_reorder(
+    category_name,
+    category_market_cap,
+    .fun = median,
+    .desc = TRUE
+  )) |>
+  ggplot(aes(x = date, y = category_market_cap, fill = category_name)) +
+  geom_area(position = "fill") +
+  annotate(
+    "rect",
+    xmin = as.Date("2022-05-07"), xmax = as.Date("2022-05-12"),
+    ymin = -Inf, ymax = Inf, fill = "grey20", alpha = 0.18
+  ) +
+  annotate(
+    "rect",
+    xmin = as.Date("2022-11-08"), xmax = as.Date("2022-11-11"),
+    ymin = -Inf, ymax = Inf, fill = "grey20", alpha = 0.18
+  ) +
+  annotate(
+    "label",
+    x = as.Date("2022-05-09"), y = 0.97,
+    label = "Luna / UST crash", size = 3
+  ) +
+  annotate(
+    "label",
+    x = as.Date("2022-11-09"), y = 0.97,
+    label = "FTX collapse", size = 3
+  ) +
+  scale_fill_viridis_d(option = "cividis") +
+  scale_y_continuous(labels = scales::label_percent()) +
+  labs(
+    title = "How crypto market capitalization shifted across categories",
+    subtitle = "Each band shows a category's share of total daily crypto market cap; all categories sum to 100%.",
+    x = "Date",
+    y = "Share of total market cap",
+    fill = "Category",
+    caption = "Source: daily_prices.parquet, coin_metadata.parquet, and categories.parquet; category totals are based on daily market capitalization."
+  ) +
+  theme_minimal()
+```
+
+```{r}
+metadata <- metadata |>
+  mutate(launch_date_parsed = as_date(parse_date_time(
+    launch_date,
+    orders = c("B d, Y", "Y-m-d")
+  )))
+
+metadata |>
+  select(coin_id, coin_name, launch_date, launch_date_parsed) |>
+  arrange(launch_date_parsed)
+```
+
+```{r}
+prices |>
+  filter(coin_id == "btc") |>
+  ggplot(aes(x = as.Date(date_raw), y = price_usd)) +
+  geom_line(color = "darkorange", linewidth = 0.8) +
+  labs(
+    title = "Bitcoin daily price",
+    x = "Date",
+    y = "Price (USD)"
+  ) +
+  theme_minimal()
+```
